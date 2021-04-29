@@ -29,6 +29,7 @@ from mypy.types import Instance
 from mypy.types import NoneType
 from mypy.types import ProperType
 from mypy.types import TypeOfAny
+from mypy.types import UnboundType
 from mypy.types import UnionType
 
 from . import names
@@ -114,6 +115,31 @@ def _infer_type_from_relationship(
         related_object_type = target_cls_arg.node
         python_type_for_type = Instance(related_object_type, [])
 
+    elif isinstance(target_cls_arg, StrExpr):
+        # if this is a call like `relationship("Foo", ...)`, resolve
+        # that string name within the current module
+        name = target_cls_arg.value
+        model = api.lookup_qualified(name, target_cls_arg, suppress_errors=True)
+        print(f"    {model}, {api.final_iteration}")
+        if model is None:
+            if api.final_iteration:
+                msg = (
+                    "Cannot find model named '{}': ensure this model is imported "
+                    "(use `if TYPE_CHECKING:` to avoid circular imports, if required)"
+                )
+                util.fail(api, msg.format(name), target_cls_arg)
+            else:
+                # maybe the name will become available later...
+                api.defer()
+                # FIXME: this would be better as UnboundType, I think,
+                # but I don't know what name to give it...
+                return AnyType(type_of_any=TypeOfAny.from_error)
+
+        elif isinstance(model.node, TypeInfo):
+            related_object_type = model.node
+            python_type_for_type = Instance(related_object_type, [])
+
+
     # other cases not covered - an error message directs the user
     # to set an explicit type annotation
     #
@@ -125,8 +151,6 @@ def _infer_type_from_relationship(
     # isinstance(target_cls_arg, NameExpr) and isinstance(
     #     target_cls_arg.node, TypeAlias
     # )
-    # string expression
-    # isinstance(target_cls_arg, StrExpr)
 
     uselist_arg = util._get_callexpr_kwarg(stmt.rvalue, "uselist")
     collection_cls_arg: Optional[Expression] = util._get_callexpr_kwarg(

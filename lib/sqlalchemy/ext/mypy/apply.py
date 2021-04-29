@@ -143,6 +143,23 @@ def _re_apply_declarative_assignments(
                 # update the DeclClassApplied with the better information
                 mapped_attr_lookup[stmt.lvalues[0].name] = python_type_for_type
                 update_cls_metadata = True
+            elif (
+                isinstance(python_type_for_type, AnyType)
+                and python_type_for_type.is_from_error
+            ):
+                python_type_for_type = infer._infer_type_from_right_hand_nameexpr(
+                    api, stmt, left_node, left_node.type, stmt.rvalue.callee,
+                )
+
+                print(f"    {python_type_for_type}")
+                if python_type_for_type is None or isinstance(
+                    python_type_for_type, UnboundType
+                ):
+                    continue
+
+                # update the DeclClassApplied with the better information
+                mapped_attr_lookup[stmt.lvalues[0].name] = python_type_for_type
+                update_cls_metadata = True
 
             left_node.type = api.named_type(
                 "__sa_Mapped", [python_type_for_type]
@@ -186,6 +203,11 @@ def _apply_type_to_mapped_statement(
         left_node.type = api.named_type(
             "__sa_Mapped", [left_hand_explicit_type]
         )
+    elif (
+        isinstance(python_type_for_type, AnyType)
+        and python_type_for_type.is_from_error
+    ):
+        return
     else:
         lvalue.is_inferred_def = False
         left_node.type = api.named_type(
